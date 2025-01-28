@@ -4,6 +4,7 @@ import getpass
 import json
 import os
 import pathlib
+import string
 import subprocess
 import sys
 import time
@@ -22,11 +23,18 @@ flag_command = args.cmd
 commands: dict = {}
 
 
+def valid_name(name: str) -> bool:
+    return not set(name).difference(string.ascii_letters + string.digits + "_-")
+
+
 def get_user_config() -> dict:
     real_toml = os.path.realpath(arg_toml)
     os.chdir(os.path.dirname(real_toml))
     with open(real_toml, "rb") as f:
         data: dict = tomllib.load(f)
+    if not valid_name(data["name"]):
+        print("Invalid name", file=sys.stderr)
+        exit(1)
     data["image"] = os.path.realpath(data["image"])
     data["mount"] = os.path.realpath(data["mount"])
     return data
@@ -132,17 +140,25 @@ def root_success(fifo_path: str):
 
 
 def root_open(fifo_path: str, name: str, image: str, filesystem: str, mount: str, key: str = "", passwd: str = ""):
+    if not valid_name(name):
+        with open(fifo_path, "w") as fifo:
+            json.dump({
+                "code": 1,
+                "stderr": "Invalid name"
+            }, fifo)
+            fifo.flush()
+        return
     try:
         if key:
             subprocess.run([
-                "cryptsetup", "open", "--type", "luks", image, name, "--key-file", key
+                "cryptsetup", "open", "--type", "luks", image, f"pen-locker-{name}", "--key-file", key
             ], check=True, capture_output=True)
         else:
             subprocess.run([
                 "cryptsetup", "open", "--type", "luks", image, name
             ], check=True, capture_output=True, input=passwd.encode('utf-8'))
         subprocess.run([
-            "mount", "-t", filesystem, f"/dev/mapper/{name}", mount
+            "mount", "-t", filesystem, f"/dev/mapper/pen-locker-{name}", mount
         ], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         with open(fifo_path, "w") as fifo:
@@ -156,12 +172,20 @@ def root_open(fifo_path: str, name: str, image: str, filesystem: str, mount: str
 
 
 def root_close(fifo_path: str, name: str, mount: str):
+    if not valid_name(name):
+        with open(fifo_path, "w") as fifo:
+            json.dump({
+                "code": 1,
+                "stderr": "Invalid name"
+            }, fifo)
+            fifo.flush()
+        return
     try:
         subprocess.run([
             "umount", mount
         ], check=True, capture_output=True)
         subprocess.run([
-            "cryptsetup", "close", name
+            "cryptsetup", "close", f"pen-locker-{name}"
         ], check=True, capture_output=True)
     except subprocess.CalledProcessError as e:
         with open(fifo_path, "w") as fifo:
