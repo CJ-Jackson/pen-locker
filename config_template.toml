@@ -1,0 +1,8 @@
+#!/usr/bin/env pen-locker
+
+# key: ~/.config/pen-locker/key/name.bin
+
+name = ""
+image = ""
+filesystem = ""
+mount = ""

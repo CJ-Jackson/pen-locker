@@ -1,0 +1,7 @@
+[Unit]
+Description=Run pen-locker recv
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/pen-locker no-file --cmd recv

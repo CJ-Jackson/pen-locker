@@ -1,0 +1,8 @@
+[Unit]
+Description=Run pen-locker recv
+
+[Path]
+PathModified=/tmp/pen-locker.path
+
+[Install]
+WantedBy=multi-user.target
