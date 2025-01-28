@@ -5,10 +5,10 @@ Description=pen-locker init touch service
 Type=oneshot
 ExecStart=/usr/bin/touch /tmp/pen-locker.path
 ExecStart=/usr/bin/chmod 664 /tmp/pen-locker.path
-ExecStart=/usr/bin/chown root:wheel /tmp/pen-locker.path
+ExecStart=/usr/bin/chown root:pen-locker /tmp/pen-locker.path
 ExecStart=/usr/bin/mkdir /tmp/pen-locker-queue
 ExecStart=/usr/bin/chmod 775 /tmp/pen-locker-queue
-ExecStart=/usr/bin/chown root:wheel /tmp/pen-locker-queue
+ExecStart=/usr/bin/chown root:pen-locker /tmp/pen-locker-queue
 
 [Install]
 WantedBy=multi-user.target
