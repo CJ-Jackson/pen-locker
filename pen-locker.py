@@ -216,7 +216,10 @@ def recv():
     for queue in pathlib.Path("/tmp/pen-locker-queue").glob("pen-locker-*-queue"):
         fifo_path = pathlib.Path(str(queue)).read_text('utf-8').strip()
         os.remove(str(queue))
-        process_queue(fifo_path)
+        try:
+            process_queue(fifo_path)
+        except KeyError as e:
+            print(e.__str__(), file=sys.stderr)
 
 
 commands["recv"] = recv
