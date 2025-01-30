@@ -27,6 +27,9 @@ def valid_name(name: str) -> bool:
     return not set(name).difference(string.ascii_letters + string.digits + "_-")
 
 
+class ValidNameError(Exception): pass
+
+
 def get_user_config() -> dict:
     real_toml = os.path.realpath(arg_toml)
     os.chdir(os.path.dirname(real_toml))
@@ -139,61 +142,42 @@ def root_success(fifo_path: str):
         fifo.flush()
 
 
+def root_fail(fifo_path: str, code: int, msg: str):
+    with open(fifo_path, "w") as fifo:
+        json.dump({
+            "code": code,
+            "stderr": msg
+        }, fifo)
+        fifo.flush()
+
+
 def root_open(fifo_path: str, name: str, image: str, filesystem: str, mount: str, key: str = "", passwd: str = ""):
     if not valid_name(name):
-        with open(fifo_path, "w") as fifo:
-            json.dump({
-                "code": 1,
-                "stderr": "Invalid name"
-            }, fifo)
-            fifo.flush()
-        return
-    try:
-        if key:
-            subprocess.run([
-                "cryptsetup", "open", "--type", "luks", image, f"pen-locker-{name}", "--key-file", key
-            ], check=True, capture_output=True)
-        else:
-            subprocess.run([
-                "cryptsetup", "open", "--type", "luks", image, name
-            ], check=True, capture_output=True, input=passwd.encode('utf-8'))
+        raise ValidNameError("Name not valid")
+    if key:
         subprocess.run([
-            "mount", "-t", filesystem, f"/dev/mapper/pen-locker-{name}", mount
+            "cryptsetup", "open", "--type", "luks", image, f"pen-locker-{name}", "--key-file", key
         ], check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        with open(fifo_path, "w") as fifo:
-            json.dump({
-                "code": e.returncode,
-                "stderr": str(e.stderr)
-            }, fifo)
-            fifo.flush()
-            return
+    else:
+        subprocess.run([
+            "cryptsetup", "open", "--type", "luks", image, name
+        ], check=True, capture_output=True, input=passwd.encode('utf-8'))
+    subprocess.run([
+        "mount", "-t", filesystem, f"/dev/mapper/pen-locker-{name}", mount
+    ], check=True, capture_output=True)
     root_success(fifo_path)
+
 
 
 def root_close(fifo_path: str, name: str, mount: str):
     if not valid_name(name):
-        with open(fifo_path, "w") as fifo:
-            json.dump({
-                "code": 1,
-                "stderr": "Invalid name"
-            }, fifo)
-            fifo.flush()
-        return
-    try:
-        subprocess.run([
-            "umount", mount
-        ], check=True, capture_output=True)
-        subprocess.run([
-            "cryptsetup", "close", f"pen-locker-{name}"
-        ], check=True, capture_output=True)
-    except subprocess.CalledProcessError as e:
-        with open(fifo_path, "w") as fifo:
-            json.dump({
-                "code": e.returncode,
-                "stderr": str(e.stderr)
-            }, fifo)
-            fifo.flush()
+        raise ValidNameError("Name not valid")
+    subprocess.run([
+        "umount", mount
+    ], check=True, capture_output=True)
+    subprocess.run([
+        "cryptsetup", "close", f"pen-locker-{name}"
+    ], check=True, capture_output=True)
     root_success(fifo_path)
 
 
@@ -207,13 +191,20 @@ def process_queue(recv_fifo_path: str):
     fifo_path = data["fifo"]
     os.mkfifo(fifo_path, 0o640)
     os.chown(fifo_path, 0, path_gid)
-    match data:
-        case {"cmd": "open_key"}:
-            root_open(fifo_path, data["name"], data["image"], data["filesystem"], data["mount"], key=data["key_file"])
-        case {"cmd": "open_passwd"}:
-            root_open(fifo_path, data["name"], data["image"], data["filesystem"], data["mount"], passwd=data["passwd"])
-        case {"cmd": "close"}:
-            root_close(fifo_path, data["name"], data["mount"])
+    try:
+        match data:
+            case {"cmd": "open_key"}:
+                root_open(fifo_path, data["name"], data["image"], data["filesystem"], data["mount"], key=data["key_file"])
+            case {"cmd": "open_passwd"}:
+                root_open(fifo_path, data["name"], data["image"], data["filesystem"], data["mount"], passwd=data["passwd"])
+            case {"cmd": "close"}:
+                root_close(fifo_path, data["name"], data["mount"])
+    except subprocess.CalledProcessError as e:
+        root_fail(fifo_path, e.returncode, str(e.stderr))
+    except ValidNameError:
+        root_fail(fifo_path, 1, "Name not valid")
+    except KeyError as e:
+        root_fail(fifo_path, 1, e.__str__())
     os.remove(fifo_path)
     time.sleep(1)
 
